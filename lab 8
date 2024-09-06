@@ -1,0 +1,298 @@
+"""Лаба 8
+Требуется написать объектно-ориентированную программу с графическим интерфейсом в соответствии со своим вариантом. 
+В программе должны быть реализованы минимум один класс, три атрибута, четыре метода (функции). 
+Ввод данных из файла с контролем правильности ввода. 
+Базы данных использовать нельзя. При необходимости сохранять информацию в виде файлов, разделяя значения запятыми или пробелами. 
+Для GUI использовать библиотеку tkinter.
+Вариант 20
+Объекты – договоры на продажу жилья
+Функции:	сегментация полного списка договоров по видам жилья
+визуализация предыдущей функции в форме круговой диаграммы
+сегментация полного списка договоров по менеджерам
+визуализация предыдущей функции в форме круговой диаграммы
+"""
+import tkinter as tk
+from tkinter import filedialog, messagebox
+from tkinter import ttk
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import matplotlib.figure as figure
+from collections import defaultdict
+
+
+# Класс для представления одного договора
+class Contract:
+    def __init__(self, property_type, manager, price):
+        self.property_type = property_type  # Тип жилья
+        self.manager = manager  # Менеджер
+        self.price = float(price)  # Цена
+
+
+# Класс для работы с набором договоров
+class ContractManager:
+    def __init__(self):
+        self.contracts = []
+        self.current_file = None
+
+    def load_from_file(self, filename):
+        self.contracts.clear()
+        self.current_file = filename
+        try:
+            with open(filename, 'r', encoding='utf-8') as file:
+                for line in file:
+                    line = line.strip()
+                    if line:
+                        row = line.split(',')
+                        if len(row) == 3:
+                            self.contracts.append(Contract(row[0], row[1], row[2]))
+            return True
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось загрузить данные: {e}")
+            return False
+
+    def save_to_file(self, filename):
+        try:
+            with open(filename, 'w', encoding='utf-8') as file:
+                for contract in self.contracts:
+                    file.write(f"{contract.property_type},{contract.manager},{contract.price}\n")
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось сохранить данные: {e}")
+
+    def add_contract(self, property_type, manager, price):
+        self.contracts.append(Contract(property_type, manager, price))
+        if self.current_file:
+            self.save_to_file(self.current_file)
+
+    def delete_contract(self, index):
+        if 0 <= index < len(self.contracts):
+            del self.contracts[index]
+            if self.current_file:
+                self.save_to_file(self.current_file)  # Сохраняем данные в текущий файл
+            return True
+        return False
+
+    def update_contract(self, index, property_type, manager, price):
+        if 0 <= index < len(self.contracts):
+            self.contracts[index] = Contract(property_type, manager, price)
+            if self.current_file:
+                self.save_to_file(self.current_file)
+            return True
+        return False
+
+    def segment_by_property_type(self):
+        segments = defaultdict(int)
+        for contract in self.contracts:
+            segments[contract.property_type] += 1
+        return segments
+
+    def segment_by_manager(self):
+        segments = defaultdict(int)
+        for contract in self.contracts:
+            segments[contract.manager] += 1
+        return segments
+
+    def plot_pie_chart(self, data, title):
+        labels = list(data.keys())
+        sizes = list(data.values())
+
+        fig = figure.Figure(figsize=(6, 6))
+        ax = fig.add_subplot(111)
+        ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140)
+        ax.set_title(title)
+
+        return fig
+
+    def get_contracts_info(self):
+        info_lines = []
+        for contract in self.contracts:
+            info_lines.append((contract.property_type, contract.manager, contract.price))
+        return info_lines
+
+
+# Основное окно программы и его элементы
+class ContractApp:
+    def __init__(self, root):
+        self.manager = ContractManager()
+        self.root = root
+        self.root.title("Договоры на продажу жилья")
+
+        # Кнопка для загрузки данных
+        self.load_button = tk.Button(root, text="Загрузить данные", command=self.load_data)
+        self.load_button.pack(pady=10)
+
+        # Кнопка для добавления новой записи
+        self.add_button = tk.Button(root, text="Добавить запись", command=self.open_add_dialog)
+        self.add_button.pack(pady=10)
+
+        # Кнопка для сегментации по видам жилья
+        self.segment_property_button = tk.Button(root, text="Сегментация по видам жилья", command=self.segment_property)
+        self.segment_property_button.pack(pady=10)
+
+        # Кнопка для сегментации по менеджерам
+        self.segment_manager_button = tk.Button(root, text="Сегментация по менеджерам", command=self.segment_manager)
+        self.segment_manager_button.pack(pady=10)
+
+        # Настройка таблицы для отображения информации о договорах
+        self.tree = ttk.Treeview(root, columns=("property_type", "manager", "price"), show='headings')
+        self.tree.heading("property_type", text="Тип жилья")
+        self.tree.heading("manager", text="Менеджер")
+        self.tree.heading("price", text="Цена")
+        self.tree.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
+
+        # Обработчик двойного щелчка для изменения и удаления записей
+        self.tree.bind("<Double-1>", self.on_item_double_click)
+        # Для хранения ссылок на окна с графиками
+        self.figures = []
+
+    def load_data(self):
+        filename = filedialog.askopenfilename(filetypes=[("Текстовые файлы", "*.txt")])
+        if filename:
+            if self.manager.load_from_file(filename):
+                self.update_table()
+                messagebox.showinfo("Загрузка данных", "Данные успешно загружены и отображены!")
+
+    def open_add_dialog(self):
+        AddContractDialog(self.root, self.manager, self.update_table)
+
+    def update_table(self):
+        for row in self.tree.get_children():
+            self.tree.delete(row)
+        for info in self.manager.get_contracts_info():
+            self.tree.insert("", tk.END, values=info)
+
+    def show_pie_chart(self, fig):
+        chart_window = tk.Toplevel(self.root)
+        chart_window.title("Диаграмма")
+
+        canvas = FigureCanvasTkAgg(fig, master=chart_window)
+        canvas.draw()  # Рисуем график
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+        self.figures.append(chart_window)
+
+    def segment_property(self):
+        data = self.manager.segment_by_property_type()
+        fig = self.manager.plot_pie_chart(data, "Сегментация по видам жилья")
+        self.show_pie_chart(fig)
+
+    def segment_manager(self):
+        data = self.manager.segment_by_manager()
+        fig = self.manager.plot_pie_chart(data, "Сегментация по менеджерам")
+        self.show_pie_chart(fig)
+
+    def on_item_double_click(self, event):
+        item = self.tree.selection()
+        if item:
+            index = self.tree.index(item[0])
+            EditContractDialog(self.root, self.manager, self.update_table, index)
+
+
+# Диалоговое окно для добавления новой записи
+class AddContractDialog:
+    def __init__(self, parent, manager, update_callback):
+        self.manager = manager
+        self.update_callback = update_callback  # Функция обратного вызова для обновления таблицы
+        self.top = tk.Toplevel(parent)  # Создаем новое окно для добавления договора
+        self.top.title("Добавить новый договор")
+
+        tk.Label(self.top, text="Тип жилья:").grid(row=0, column=0, padx=10, pady=10)
+        self.property_type_entry = tk.Entry(self.top)
+        self.property_type_entry.grid(row=0, column=1, padx=10, pady=10)
+
+        tk.Label(self.top, text="Менеджер:").grid(row=1, column=0, padx=10, pady=10)
+        self.manager_entry = tk.Entry(self.top)
+        self.manager_entry.grid(row=1, column=1, padx=10, pady=10)
+
+        tk.Label(self.top, text="Цена:").grid(row=2, column=0, padx=10, pady=10)
+        self.price_entry = tk.Entry(self.top)
+        self.price_entry.grid(row=2, column=1, padx=10, pady=10)
+
+        self.add_button = tk.Button(self.top, text="Добавить", command=self.add_contract)
+        self.add_button.grid(row=3, column=0, columnspan=2, pady=10)
+
+    def add_contract(self):
+        property_type = self.property_type_entry.get()
+        manager = self.manager_entry.get()
+        price = self.price_entry.get()
+
+        if not property_type or not manager or not price:
+            messagebox.showwarning("Ошибка", "Все поля должны быть заполнены.")
+            return
+
+        try:
+            price = float(price)
+        except ValueError:
+            messagebox.showwarning("Ошибка", "Цена должна быть числом.")
+            return
+
+        self.manager.add_contract(property_type, manager, price)
+        self.update_callback()
+        self.top.destroy()
+
+
+# Диалоговое окно для редактирования записи
+class EditContractDialog:
+    def __init__(self, parent, manager, update_callback, index):
+        self.manager = manager
+        self.update_callback = update_callback
+        self.index = index  # Индекс редактируемого договора
+        self.top = tk.Toplevel(parent)  # Создаем новое окно для редактирования договора
+        self.top.title("Редактировать договор")
+
+        contract = self.manager.contracts[index]  # Получаем договор для редактирования
+
+        tk.Label(self.top, text="Тип жилья:").grid(row=0, column=0, padx=10, pady=10)
+        self.property_type_entry = tk.Entry(self.top)
+        self.property_type_entry.grid(row=0, column=1, padx=10, pady=10)
+        self.property_type_entry.insert(0, contract.property_type)
+
+        tk.Label(self.top, text="Менеджер:").grid(row=1, column=0, padx=10, pady=10)
+        self.manager_entry = tk.Entry(self.top)
+        self.manager_entry.grid(row=1, column=1, padx=10, pady=10)
+        self.manager_entry.insert(0, contract.manager)
+
+        tk.Label(self.top, text="Цена:").grid(row=2, column=0, padx=10, pady=10)
+        self.price_entry = tk.Entry(self.top)
+        self.price_entry.grid(row=2, column=1, padx=10, pady=10)
+        self.price_entry.insert(0, contract.price)
+
+        self.save_button = tk.Button(self.top, text="Сохранить", command=self.save_contract)
+        self.save_button.grid(row=3, column=0, columnspan=2, pady=10)
+
+        self.delete_button = tk.Button(self.top, text="Удалить", command=self.delete_contract)
+        self.delete_button.grid(row=4, column=0, columnspan=2, pady=10)
+
+    def save_contract(self):
+        property_type = self.property_type_entry.get()
+        manager = self.manager_entry.get()
+        price = self.price_entry.get()
+
+        if not property_type or not manager or not price:
+            messagebox.showwarning("Ошибка", "Все поля должны быть заполнены.")
+            return
+
+        try:
+            price = float(price)
+        except ValueError:
+            messagebox.showwarning("Ошибка", "Цена должна быть числом.")
+            return
+
+        if self.manager.update_contract(self.index, property_type, manager, price):
+            self.update_callback()
+            self.top.destroy()
+        else:
+            messagebox.showwarning("Ошибка", "Не удалось обновить запись.")
+
+    def delete_contract(self):
+        if self.manager.delete_contract(self.index):
+            self.update_callback()
+            self.top.destroy()
+        else:
+            messagebox.showwarning("Ошибка", "Не удалось удалить запись.")
+
+
+# Запуск программы
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = ContractApp(root)
+    root.mainloop()
