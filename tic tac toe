@@ -1,0 +1,121 @@
+from tkinter import *
+import random
+
+size_btn = 150 #размер кнопки
+root = Tk() #окно приложения
+
+list_btn = [] #список кнопок
+click_btn = [] #список кнопок, на которые нажали
+comp_btn = [] #список кнопок, на которые нажимает компьютер
+
+root.geometry(f'{size_btn*3}x{size_btn * 3 +100}') #задаем размеры окна 3*3+ поле снизу
+root.title("Крестики нолики")
+
+
+#класс для создания параметров
+class Btn():
+    global size_btn, list_btn, click_btn, comp_btn
+    def __init__(self, x0, y0, index_btn): #расположение и index_btn индекс кнопки
+        self.index_btn = index_btn
+        self.x0 = x0
+        self.y0 = y0
+        self.btn = Button(font=('Arial 100 bold')) #создаем кнопку, задаем шрифт, размер, жирный
+        self.btn.place(x=x0, y=y0, width=size_btn, height=size_btn) #задаем место для кнопки, ширина и высота
+        self.start_btn = Button(text='Start', height=2, width=8, command=self.click_start) # создание кнопки START
+        self.start_btn.place(relx=0.8, rely=0.85) # расположение кнопки "START"
+        self.label = Label(text='Для начала игры нажмите старт', width=30, height=2)
+        self.label.place(relx=0.25, rely=0.85) #размещение label
+        # список выиграшных комбинаций
+        self.wins = [[0, 1, 2],
+                     [3, 4, 5],
+                     [6, 7, 8],
+                     [0, 3, 6],
+                     [1, 4, 7],
+                     [2, 5, 8],
+                     [0, 4, 7],
+                     [2, 4, 6]]
+
+#функции работы кнопок
+    def unbind(self, event):
+        self.btn.unbind("<Button-1>") #даем кнопке команду inbind выключает кнопку
+    def bind(self, event):
+        self.btn.bind("<Button-1>", self.click) #даем кнопке команду inbind включает кнопку, вызываем обработчик и функцию
+
+    #перекрашиваем кнопки в случае выигрыша
+    def cfg_green(self):
+        self.btn.config(bq='green') #background фон книпки - зеленый при выигрыше
+    def cfg_white(self):
+        self.btn.config(bq='white') #в обычном состоянии кнопка - белая
+
+
+#функция проверка выигрыша
+    def check_win(self, list1): #list1 список кнопок, которые нажмем
+        self.win = False #ставим флажок выигрыша
+        choice_btn = sorted(list1) #выберем список кнопок, который мы нажали  = сортированный список, полученный функцией
+        k = 0 #счетчик для подсчета выигрышных расположений в выигр списке
+        for i in range(8): #8 выигрышных комбинаций
+            for j in range(3): #3 цифры в списке
+                if self.wins[i][j] in choice_btn:
+                    k += 1
+            if k == 3:
+                self.win = True #флажок переводим в параметр true - выиграли
+                break
+            else:
+                k = 0
+        if self.win: # если выиграли
+            for q in list_btn:
+                q.unbint('<Button-1>') #проходи по кнопкам и выключаем
+            for w in range(3):
+                list_btn[self.wins[i][w].cfg_green]() #перекрашиваем лист, выбранных кнопок - зеленый
+
+
+    def cfg_o(self, str1): # функция, нажатая кнопка = "0"
+        self.btn.config(text = str1)
+
+
+
+    def game(self):
+        while(len(comp_btn) + len(click_btn)) < 9: #бесконечный цикл while, длиться до тех пор пока не нажаты кнопки
+            x = random.randint(0, 8)  # координата кнопки, которы нажмет компьютер
+            if x not in click_btn and x not in comp_btn: # проверка того, что кнопка не была нажата не нами не компьютером
+                comp_btn.append(x) # если условие выполняется, то добавляем координату в список
+                list_btn[x].config_o("O")   #установка 0 в ячейку
+                list_btn[x].unbind1('<Button-1>') #команда выключить клавишу
+                break
+        self.check_win(comp_btn) # функция проверки выигрыша компьютера
+
+    def click_start(self):  # функция на нажатия кнопки START
+        global click_btn, comp_btn
+        click_btn = []   # при нажатии кнопки START обнуляем все списки
+        comp_btn = []
+        for b in list_btn: # список с нажатыми кнопками (создание кнопок)
+            b.btn.config(text= '') # на кнопках не было никакой информации (ничего не написано)
+            b.bind('<Button1>')
+            b.cfg_white() # закрашиваем в белый цвет
+        self.game()  # запуск игры
+
+    def click(self, event):  # обработчик (при нажатии на click будет выбираться "X")
+        self.btn.config(text="X")
+        click_btn.append(self.index_btn) # эта информация добавляется в список click_btn
+        self.check_win(comp_btn)  # проверка списков выигрыш/проигрыш игрок
+        self.check_win(click_btn)   # проверка списков выигрыш/проигрыш компьютер
+        self.btn.unbind('<Button-1')  # выключаем все кнопки в случае выигрыша
+        self.game()
+def draw(): # функция для отрисовки поля, разметка
+    index = 0 # индекс начальной кнопки
+    x = 0
+    y = 0
+    for i in range(3): # цикл для размещения клеток поля
+        for j in range(3):
+            list_btn.append(Btn(x, y, index))  # вызываем класс Btn
+            index += 1
+            x += size_btn
+        x = 0
+        y += size_btn
+
+draw()
+
+
+
+root.mainloop() #запуск окна
+
