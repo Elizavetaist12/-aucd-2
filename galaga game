@@ -1,0 +1,114 @@
+import pygame
+import random
+
+pygame.init() #инициализируем игру
+
+screen = pygame.display.set_mode((600,749))
+pygame.display.set_caption("Galaga game")
+
+icon = pygame.image.load("images/icon_ship.png").convert_alpha()
+pygame.display.set_icon(icon)
+
+bg = pygame.image.load("images/cosmos.png").convert()
+bg_y = 0
+
+ship = pygame.image.load("images/ship1.png").convert_alpha()
+ship_x = 230
+ship_y = 620
+ship_speed = 1
+
+asteroid = pygame.image.load("images/asteroid1.png").convert_alpha()
+asteroids = []
+asteroid_speed = 0.25
+asteroid_y = -50
+
+asteroid_timer= pygame.USEREVENT + 1
+pygame.time.set_timer(asteroid_timer,1000)
+
+gameplay = True
+
+label = pygame.font.Font("images/text_ship.ttf",60)
+lose_label = label.render("Game over",True,(234,9,51))
+
+restart_label = label.render("Start",True,(255,255,255))
+restart_label_rect = restart_label.get_rect(topleft=(250,350))
+
+bullet = pygame.image.load("images/result_bullet (4).png").convert_alpha()
+bullets = []
+
+running = True
+while running:
+
+    screen.blit(bg, (0, bg_y))
+    screen.blit(bg,(0,bg_y - 749))
+
+    if gameplay:
+
+        if bullets:
+            for (i,el) in enumerate (bullets):
+                screen.blit(bullet,(el.x,el.y))
+                el.y -= 1
+                if el.y < 0:
+                    bullets.pop(i)
+
+                if asteroids:
+                    for (index, asteroid_element) in enumerate (asteroids):
+                        if el.colliderect(asteroid_element):
+                            asteroids.pop(index)
+                            bullets.pop(i)
+
+        screen.blit(ship,(ship_x,ship_y))
+
+        for (i,asteroid_rect) in enumerate (asteroids):
+            screen.blit(asteroid,asteroid_rect.topleft)
+            asteroid_rect.y += asteroid_speed * 3
+
+            ship_rect = ship.get_rect(topleft=(ship_x,ship_y))
+            if asteroid_rect.colliderect(ship_rect):
+                gameplay = False
+                break
+
+            if asteroid_rect.y > 749:
+                asteroids.pop(i)
+
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_RIGHT] and ship_x < 440:
+            ship_x += ship_speed
+        elif keys[pygame.K_LEFT] and ship_x > 10:
+            ship_x -= ship_speed
+        elif keys[pygame.K_UP] and ship_y > 100:
+            ship_y -= ship_speed
+        elif keys[pygame.K_DOWN] and ship_y < 620:
+            ship_y += ship_speed
+
+        bg_y += 0.15
+        if bg_y >= 749:
+            bg_y = 0
+
+    else:
+        screen.blit(bg, (0, bg_y))
+        screen.blit(restart_label, restart_label_rect)
+        screen.blit(lose_label, (190, 180))
+        mouse = pygame.mouse.get_pos()
+        if restart_label_rect.collidepoint(mouse) and pygame.mouse.get_pressed()[0]:
+            gameplay = True
+            ship_x = 230
+            ship_y = 620
+            asteroids.clear()
+            bullets.clear()
+
+
+    pygame.display.update()
+
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+            pygame.quit()
+        if event.type == asteroid_timer:
+            asteroid_x = random.randint(20, 420)
+            asteroid_rect = asteroid.get_rect(topleft=(asteroid_x, -50))
+            asteroids.append(asteroid_rect)
+        if gameplay and event.type == pygame.KEYUP and event.key == pygame.K_SPACE:
+            bullets.append(bullet.get_rect(topleft=(ship_x + 55, ship_y + 20)))
+
+
