@@ -1,0 +1,619 @@
+import tkinter as tk
+import random
+from tkinter import messagebox
+import hashlib
+import os
+
+DATA_FILE = "users_data.txt"
+
+class CircleGridApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Сиджа 5x5")
+        self.cell_size = 100
+        self.grid_size = 5
+        self.margin = 50
+        self.is_delaying = False
+
+        self.button_frame = tk.Frame(root)
+        self.button_frame.pack(pady=10)
+
+        self.reset_button = tk.Button(self.button_frame, text="Начать с начала", command=self.reset_game)
+        self.reset_button.pack(side=tk.LEFT, padx=5)
+
+        self.rules_button = tk.Button(self.button_frame, text="Правила", command=self.show_rules)
+        self.rules_button.pack(side=tk.LEFT, padx=5)
+        self.current_turn = ""
+        self.turn_label = tk.Label(root, text=self.current_turn, font=("Arial", 14))
+        self.turn_label.pack()
+
+        width_canvas = self.cell_size * self.grid_size + 2 * self.margin
+        height_canvas = self.cell_size * self.grid_size + 2 * self.margin
+        self.canvas = tk.Canvas(root, width=width_canvas, height=height_canvas)
+        self.canvas.pack()
+        self.center_cell = (self.grid_size // 2, self.grid_size // 2)
+        self.create_grid()
+        self.click_count = 0
+        self.user_turn = random.choice([True, False])
+        self.first_turn_player = self.user_turn
+        self.second_stage = False
+        self.selected_circle = None
+        self.computer_selected = None
+
+        self.blinking_circle = None
+        if not self.user_turn:
+            self.add_random_circles(2)
+
+        self.canvas.bind("<Button-1>", self.on_click)
+
+    def update_turn_label(self):
+        self.turn_label.config(text=self.current_turn)
+
+    def reset_game(self):
+        """Функция для сброса игры до начального состояния."""
+        self.current_turn = ""
+        self.turn_label.config(text=self.current_turn)
+        self.canvas.delete("all")
+        self.create_grid()
+        self.click_count = 0
+        self.user_turn = random.choice([True, False])
+        self.first_turn_player = self.user_turn
+        self.second_stage = False
+        self.selected_circle = None
+        self.blinking_circle = None
+        if not self.user_turn:
+            self.add_random_circles(2)
+
+    def show_rules(self):
+        """Отображение окна с правилами игры."""
+        messagebox.showinfo("Правила игры", "Правила игры:\n"
+                                            "1. В начале игры доска пуста, у каждого игрока по 12 фишек.\n"
+                                            "2. Каждый игрок делает ход и размещает по две фишки за раз в любые пустые ячейки по своему выбору, "
+                                            "кроме центральной ячейки.\n"
+                                            "3. Фишки расставляются на поле по 2 штуки за ход, пока не будет заполнено всё поле, кроме центральной клетки.\n"
+                                            "4. После того, как все фишки расставлены, игроки по очереди перемещают по одной, из занятой клетки в пустую. "
+                                            "Каждый игрок пытался зажать фишку соперника между двумя своими фишками. Если фишка противника оказывается зажатой "
+                                            "между двумя фишками игроков, то эта фигура удаляется с доски.\n"
+                                            "5. Фишки могут двигаться по горизонтали, вертикали, диагонали.\n"
+                                            "6. Захваченная фишка выбивается только в том случае, если игрок сделал ход, чтобы зажать ее одной из своих фигур. "
+                                            "Если фишка игрока САМА входит в клетку, которая размещается между двумя фишками противника, она не снимается.\n"
+                                            "7. Фишки могут перемещаться только на одну клетку за раз и не могут пропускать клетки или перепрыгивать через другие фишки, "
+                                            "будь то свои или противника.\n"
+                                            "8. Игра продолжается пока у противника не останется всего одна фишка."
+                            )
+
+    def create_grid(self):
+        """Создание сетки 5x5."""
+        for row in range(self.grid_size):
+            for col in range(self.grid_size):
+                x1 = col * self.cell_size + self.margin
+                y1 = row * self.cell_size + self.margin
+                x2 = x1 + self.cell_size
+                y2 = y1 + self.cell_size
+                self.canvas.create_rectangle(x1, y1, x2, y2, outline="black")
+
+    def on_click(self, event):
+        """Обработчик кликов по игровому полю."""
+        if self.is_delaying:
+            return
+        if event.x < self.margin or event.x > self.margin + self.grid_size * self.cell_size:
+            return
+        if event.y < self.margin or event.y > self.margin + self.grid_size * self.cell_size:
+            return
+        if self.second_stage:
+            self.select_or_move_circle(event)
+        elif self.user_turn:
+            self.place_circle(event)
+
+    def place_circle(self, event):
+        """Размещение круга на игровом поле."""
+        col = (event.x - self.margin) // self.cell_size
+        row = (event.y - self.margin) // self.cell_size
+        if not (0 <= col < self.grid_size and 0 <= row < self.grid_size and (row, col) != self.center_cell):
+            return
+
+        x1 = col * self.cell_size + self.margin
+        y1 = row * self.cell_size + self.margin
+        x2 = x1 + self.cell_size
+        y2 = y1 + self.cell_size
+        items = self.canvas.find_enclosed(x1 + 5, y1 + 5, x2 - 5, y2 - 5)
+        if not items:
+            self.canvas.create_oval(x1 + 10, y1 + 10, x2 - 10, y2 - 10, fill="blue")
+            self.click_count += 1
+        if self.is_grid_filled():
+            self.start_second_stage()
+        elif self.click_count >= 2:
+            self.user_turn = False
+
+            self.add_random_circles(2)
+            self.click_count = 0
+
+    def add_random_circles(self, count):
+        """Расстановка кругов компьютером"""
+        for _ in range(count):
+            while True:
+                row = random.randint(0, self.grid_size - 1)
+                col = random.randint(0, self.grid_size - 1)
+                if (row, col) != self.center_cell:
+                    x1 = col * self.cell_size + self.margin
+                    y1 = row * self.cell_size + self.margin
+                    x2 = x1 + self.cell_size
+                    y2 = y1 + self.cell_size
+                    items = self.canvas.find_enclosed(x1 + 5, y1 + 5, x2 - 5, y2 - 5)
+                    if not items:
+                        self.canvas.create_oval(x1 + 10, y1 + 10, x2 - 10, y2 - 10, fill="green")
+                        break
+
+        if self.is_grid_filled():
+            self.start_second_stage()
+        else:
+            self.user_turn = True
+
+    def is_grid_filled(self):
+        """Проверка заполнено ли поле"""
+        for row in range(self.grid_size):
+            for col in range(self.grid_size):
+                if (row, col) != self.center_cell:
+                    x1 = col * self.cell_size + self.margin
+                    y1 = row * self.cell_size + self.margin
+                    x2 = x1 + self.cell_size
+                    y2 = y1 + self.cell_size
+                    items = self.canvas.find_enclosed(x1 + 5, y1 + 5, x2 - 5, y2 - 5)
+                    if not items:
+                        return False
+        return True
+
+    def start_second_stage(self):
+        """Второй этап игры"""
+        self.second_stage = True
+        self.turn = "user" if self.first_turn_player else "computer"
+        self.current_turn = "Ваш ход" if self.first_turn_player else "Ход компьютера"
+
+        print(f"Второй этап начался! Первый ход: {self.current_turn}")
+        self.update_turn_label()
+
+        if self.turn == "computer":
+            self.computer_turn()
+
+    def select_or_move_circle(self, event):
+      """Проверка чей ход"""
+      if self.turn == "user":
+         self.handle_user_turn(event)
+      elif self.turn == "computer":
+         self.computer_turn()
+
+    def handle_user_turn(self, event):
+        """Ход пользователя"""
+        col = (event.x - self.margin) // self.cell_size
+        row = (event.y - self.margin) // self.cell_size
+        x1 = col * self.cell_size + self.margin
+        y1 = row * self.cell_size + self.margin
+        x2 = x1 + self.cell_size
+        y2 = y1 + self.cell_size
+        items = self.canvas.find_enclosed(x1 + 5, y1 + 5, x2 - 5, y2 - 5)
+
+        if self.selected_circle:
+            if items and items[0] == self.selected_circle[0]:
+                self.remove_selection()
+            elif not items:
+                self.move_circle(self.selected_circle, row, col)
+                self.remove_selection()
+                self.turn = "computer"
+                self.root.after(10000, self.computer_turn)
+            else:
+                self.remove_selection()
+        else:
+            if items:
+                circle_id = items[0]
+                if self.canvas.itemcget(circle_id, "fill") == "blue":
+                    self.selected_circle = (circle_id, row, col)
+                    self.blink_circle(circle_id, x1 + 10, y1 + 10, x2 - 10, y2 - 10)
+
+        if self.computer_selected:
+            self.canvas.delete(self.computer_selected)
+            self.computer_selected = None
+
+    def computer_turn(self):
+        """Ход компьютера, поиск зеленых кругов и пустых ячеек, анализирует ходы для каждого зеленого круга
+        и выбирает тот, который позволяет теоретически удалить больше кругов противника. Передает управление пользователю."""
+        green_circles = []
+        for row in range(self.grid_size):
+            for col in range(self.grid_size):
+                x1 = col * self.cell_size + self.margin
+                y1 = row * self.cell_size + self.margin
+                x2 = x1 + self.cell_size
+                y2 = y1 + self.cell_size
+                items = self.canvas.find_enclosed(x1 + 5, y1 + 5, x2 - 5, y2 - 5)
+                for item in items:
+                    if self.canvas.itemcget(item, "fill") == "green":
+                        green_circles.append((row, col))
+
+        # Находим все пустые ячейки
+        empty_cells = []
+        for row in range(self.grid_size):
+            for col in range(self.grid_size):
+                x1 = col * self.cell_size + self.margin
+                y1 = row * self.cell_size + self.margin
+                x2 = x1 + self.cell_size
+                y2 = y1 + self.cell_size
+                items = self.canvas.find_enclosed(x1 + 5, y1 + 5, x2 - 5, y2 - 5)
+                if not items:
+                    empty_cells.append((row, col))
+
+        directions = [
+            (0, 1), (0, -1),
+            (1, 0), (-1, 0),
+            (1, 1), (-1, -1),
+            (1, -1), (-1, 1)
+        ]
+
+        best_move = None
+        max_removed_count = -1
+        print("Для каждого зеленого кружка выводим пустые соседние ячейки:")
+
+        for row, col in green_circles:
+            empty_neighbors = []
+
+            for d_row, d_col in directions:
+                adj_row, adj_col = row + d_row, col + d_col
+
+                if 0 <= adj_row < self.grid_size and 0 <= adj_col < self.grid_size:
+                    if (adj_row, adj_col) in empty_cells:
+                        empty_neighbors.append((adj_row, adj_col))
+
+            if empty_neighbors:
+                print(f"Круг на позиции ({row}, {col}) имеет следующие пустые ячейки вокруг:")
+                for empty_cell in empty_neighbors:
+                    print(f"  Пустая ячейка: {empty_cell}")
+                    empty_row, empty_col = empty_cell
+                    removed_count = self.check_and_theoretical_remove(empty_row, empty_col)
+                    print(f"Теоретически удалено кругов: {removed_count}")
+                    if removed_count > max_removed_count:
+                        max_removed_count = removed_count
+                        best_move = (row, col, empty_row, empty_col)
+        if best_move:
+            src_row, src_col, dest_row, dest_col = best_move
+            print(
+                f"Перемещаем круг с позиции ({src_row}, {src_col}) в пустую ячейку ({dest_row}, {dest_col}), где теоретически можно удалить {max_removed_count} кругов.")
+            circle_id = self.get_circle_at(src_row, src_col, "green")
+            print(circle_id)
+            selected_circle = (circle_id, src_row, src_col)
+
+            self.move_circle_computer(selected_circle, dest_row, dest_col)
+
+        self.user_turn = True
+        self.turn = "user"
+        print("Теперь ходит пользователь.")
+
+    def check_and_remove_computer(self, row, col):
+        """Поиск и удаление кругов игрока (синий)"""
+
+        directions = [
+            (0, 2), (0, -2),
+            (2, 0), (-2, 0),
+            (2, 2), (-2, -2),
+            (2, -2), (-2, 2)
+        ]
+        self.is_delaying = True
+        self.current_turn = "Ваш ход"
+
+        circles_to_remove = []
+
+        for d_row, d_col in directions:
+            confederate_row = row + d_row
+            confederate_col = col + d_col
+            confederate_circle = self.get_circle_at(confederate_row, confederate_col, "green")
+
+            if confederate_circle:
+                opponent_row = row + d_row // 2
+                opponent_col = col + d_col // 2
+                opponent_circle = self.get_circle_at(opponent_row, opponent_col, "blue")
+
+                if opponent_circle:
+                    x1, y1, x2, y2 = self.canvas.coords(opponent_circle)
+                    circles_to_remove.append((opponent_circle, x1, y1, x2, y2))
+
+        for opponent_circle, x1, y1, x2, y2 in circles_to_remove:
+            temp_outline = self.canvas.create_oval(x1, y1, x2, y2, outline="red", width=5)
+            self.root.after(5000, lambda circle=opponent_circle, outline=temp_outline: self.canvas.delete(circle))
+            self.root.after(5000, lambda outline=temp_outline: self.canvas.delete(outline))
+        self.root.after(5000, lambda: self.disable_delay())
+
+    def check_and_theoretical_remove(self, row, col):
+        """Проверка теоретически возможных удалений"""
+        directions = [
+            (0, 2), (0, -2),
+            (2, 0), (-2, 0),
+            (2, 2), (-2, -2),
+            (2, -2), (-2, 2)
+        ]
+        removed_count = 0
+        for d_row, d_col in directions:
+            confederate_row = row + d_row
+            confederate_col = col + d_col
+            confederate_circle = self.get_circle_at(confederate_row, confederate_col, "green")
+            if confederate_circle:
+                opponent_row = row + d_row // 2
+                opponent_col = col + d_col // 2
+                opponent_circle = self.get_circle_at(opponent_row, opponent_col, "blue")
+                if opponent_circle:
+                    removed_count += 1
+        return removed_count
+
+    def remove_selection(self):
+        """"Удаляет выделение круга"""
+        if self.blinking_circle is not None:
+            self.canvas.delete(self.blinking_circle)
+            self.blinking_circle = None
+        self.selected_circle = None
+
+    def move_circle_computer(self, selected_circle, new_row, new_col):
+        """Перемещает круг компьютера на новую позицию, проверяет возможность удаления круга игрока(синего),
+        проверяется на завершение игры, управляет состоянием выделенного круга"""
+        circle_id, old_row, old_col = selected_circle
+        if abs(new_row - old_row) <= 1 and abs(new_col - old_col) <= 1:
+            new_x1 = new_col * self.cell_size + self.margin + 10
+            new_y1 = new_row * self.cell_size + self.margin + 10
+            new_x2 = new_x1 + self.cell_size - 20
+            new_y2 = new_y1 + self.cell_size - 20
+
+            self.canvas.coords(circle_id, new_x1, new_y1, new_x2, new_y2)
+            self.computer_selected = self.canvas.create_oval(new_x1, new_y1, new_x2 , new_y2,
+                                    outline="yellow", width=3)
+
+            self.check_and_remove_computer(new_row, new_col)
+            self.check_game_over()
+
+            if self.blinking_circle:
+                self.canvas.delete(self.blinking_circle)
+                self.blinking_circle = None
+
+    def move_circle(self, selected_circle, new_row, new_col):
+        """Перемещение круга пользователем, проверяет возможность удаление круга противника, на завершение игры,
+        управляет состоянием выделенного круга"""
+        circle_id, old_row, old_col = selected_circle
+
+        if 0 <= new_row < self.grid_size and 0 <= new_col < self.grid_size and \
+                abs(new_row - old_row) <= 1 and abs(new_col - old_col) <= 1:
+            new_x1 = new_col * self.cell_size + self.margin + 10
+            new_y1 = new_row * self.cell_size + self.margin + 10
+            new_x2 = new_x1 + self.cell_size - 20
+            new_y2 = new_y1 + self.cell_size - 20
+            self.canvas.coords(circle_id, new_x1, new_y1, new_x2, new_y2)
+
+            self.check_and_remove_opponent(new_row, new_col)
+            self.check_game_over()
+            self.selected_circle = None
+            if self.blinking_circle:
+                self.canvas.delete(self.blinking_circle)
+                self.blinking_circle = None
+
+    def disable_delay(self):
+        """Отключение задержки"""
+        self.is_delaying = False
+        self.update_turn_label()
+
+    def check_and_remove_opponent(self, row, col):
+        """Поиск и удаление кругов компьютера (зеленый)"""
+        self.is_delaying = True
+
+        directions = [
+            (0, 2), (0, -2),
+            (2, 0), (-2, 0),
+            (2, 2), (-2, -2),
+            (2, -2), (-2, 2)
+        ]
+        self.current_turn = "Ход компьютера"
+        circles_to_remove = []
+
+        for d_row, d_col in directions:
+            confederate_row = row + d_row
+            confederate_col = col + d_col
+            confederate_circle = self.get_circle_at(confederate_row, confederate_col, "blue")
+
+            if confederate_circle:
+                opponent_row = row + d_row // 2
+                opponent_col = col + d_col // 2
+                opponent_circle = self.get_circle_at(opponent_row, opponent_col, "green")
+
+                if opponent_circle:
+                    x1, y1, x2, y2 = self.canvas.coords(opponent_circle)
+                    circles_to_remove.append((opponent_circle, x1, y1, x2, y2))
+
+
+        for opponent_circle, x1, y1, x2, y2 in circles_to_remove:
+            temp_outline = self.canvas.create_oval(x1, y1, x2, y2, outline="red", width=5)
+            self.root.after(5000, lambda circle=opponent_circle, outline=temp_outline: self.canvas.delete(circle))
+            self.root.after(5000, lambda outline=temp_outline: self.canvas.delete(outline))
+        self.root.after(5000, lambda: self.disable_delay())
+
+    def get_circle_at(self, row, col, color):
+        """Возвращает ID круга на заданной позиции и указанного цвета, если такой существует, если на указанной клетке есть
+        круг нужного цвета, то метод вернет его идентификатор"""
+        if 0 <= row < self.grid_size and 0 <= col < self.grid_size:
+            # Получаем координаты ячейки
+            x1 = col * self.cell_size + self.margin
+            y1 = row * self.cell_size + self.margin
+            x2 = x1 + self.cell_size
+            y2 = y1 + self.cell_size
+
+            items = self.canvas.find_overlapping(x1, y1, x2, y2)
+
+            for item in items:
+                item_color = self.canvas.itemcget(item, "fill")
+                if item_color == color:
+                    return item
+        return None
+
+    def blink_circle(self, circle_id, x1, y1, x2, y2):
+        """Функция для создания мигающего контура вокруг выбранного круга"""
+        if self.blinking_circle is not None:
+            self.canvas.delete(self.blinking_circle)
+        outline_id = self.canvas.create_oval(x1, y1, x2, y2, outline="yellow", width=3)
+        self.blinking_circle = outline_id
+        self.blink_circle_effect(outline_id, True)
+
+    def blink_circle_effect(self, outline_id, is_yellow):
+        """Эффект мигания контура (желтый -> зеленый)"""
+        new_color = "yellow" if is_yellow else "green"
+        self.canvas.itemconfig(outline_id, outline=new_color)  # Меняем цвет контура
+        self.root.after(500, lambda: self.blink_circle_effect(outline_id, not is_yellow))  # Через 500 мс меняем цвет снова
+
+    def count_circles(self, color):
+        """Возвращает количество кругов указанного цвета на поле."""
+        count = 0
+        for row in range(self.grid_size):
+            for col in range(self.grid_size):
+                if self.get_circle_at(row, col, color):
+                    count += 1
+                #print("count", count)
+        return count
+
+
+    def check_game_over(self):
+        """Проверяет, осталось ли у одного из игроков всего один круг, и завершает игру."""
+        user_circles = self.count_circles("blue")
+        computer_circles = self.count_circles("green")
+        if user_circles == 1:
+            messagebox.showinfo("Игра окончена", "Компьютер выиграл!")
+            self.reset_game()
+        elif computer_circles == 1:
+            messagebox.showinfo("Игра окончена", "Вы выиграли!")
+            self.reset_game()
+
+def hash_password(password):
+    """Функция для хэширования пароля"""
+    return hashlib.sha256(password.encode()).hexdigest()
+
+class LoginWindow:
+    def __init__(self, root, start_game_callback):
+        self.root = root
+        self.start_game_callback = start_game_callback
+
+        self.login_window = tk.Toplevel(root)
+        self.login_window.title("Авторизация")
+
+        self.login_window.geometry("300x180")
+
+        self.root.eval(f'tk::PlaceWindow {str(self.login_window)} center')
+
+        self.login_window.grab_set()
+
+        tk.Label(self.login_window, text="Введите имя игрока:", font=("Arial", 10, "bold")).pack(pady=1)
+        self.name_entry = tk.Entry(self.login_window)
+        self.name_entry.pack(pady=5)
+
+        tk.Label(self.login_window, text="Введите пароль:", font=("Arial", 10, "bold")).pack(pady=1)
+        self.password_entry = tk.Entry(self.login_window, show="*")
+        self.password_entry.pack(pady=5)
+
+        self.login_button = tk.Button(self.login_window, text="Войти", command=self.validate_login)
+        self.login_button.pack(pady=1)
+
+        self.register_button = tk.Button(
+            self.login_window,
+            text="Регистрация",
+            command=self.open_register_window,
+            font=("Arial", 8, "italic")  # Курсивный и меньший шрифт
+        )
+        self.register_button.pack(pady=5)
+
+    def validate_login(self):
+        """Проверка ввода данных пользователем"""
+        name = self.name_entry.get()
+        password = self.password_entry.get()
+        if name.strip() and password.strip():
+            hashed_password = hash_password(password)
+            name_password = hash_password(name)
+            if self.check_credentials(name_password, hashed_password):
+                self.login_window.destroy()
+                self.start_game_callback()
+            else:
+                messagebox.showwarning("Ошибка", "Неправильное имя пользователя или пароль!")
+        else:
+            messagebox.showwarning("Ошибка", "Имя и пароль не могут быть пустыми!")
+
+    def check_credentials(self, name_password, hashed_password):
+        """Проверка логина и пароля"""
+        if os.path.exists(DATA_FILE):
+            with open(DATA_FILE, "r") as file:
+                for line in file:
+                    stored_username, stored_password = line.strip().split(":")
+                    if stored_username == name_password and stored_password == hashed_password:
+                        return True
+        return False
+
+    def open_register_window(self):
+        """Открывает окно регистрации"""
+        RegisterWindow(self.root)
+
+class RegisterWindow:
+    def __init__(self, root):
+        self.register_window = tk.Toplevel(root)
+        self.register_window.title("Регистрация")
+
+        self.register_window.geometry("300x200")
+
+        root.eval(f'tk::PlaceWindow {str(self.register_window)} center')
+
+        self.register_window.grab_set()  # Захватываем фокус
+
+        tk.Label(self.register_window, text="Введите имя:", font=("Arial", 10, "bold")).pack(pady=1)
+        self.name_entry = tk.Entry(self.register_window)
+        self.name_entry.pack(pady=5)
+
+        tk.Label(self.register_window, text="Введите пароль:", font=("Arial", 10, "bold")).pack(pady=1)
+        self.password_entry = tk.Entry(self.register_window, show="*")
+        self.password_entry.pack(pady=5)
+
+        tk.Label(self.register_window, text="Повторите пароль:", font=("Arial", 10, "bold")).pack(pady=1)
+        self.confirm_password_entry = tk.Entry(self.register_window, show="*")
+        self.confirm_password_entry.pack(pady=5)
+
+        tk.Button(self.register_window, text="Зарегистрироваться", command=self.register).pack(pady=1)
+
+    def register(self):
+        """Регистрация пользователя"""
+        name = self.name_entry.get()
+        password = self.password_entry.get()
+        confirm_password = self.confirm_password_entry.get()
+
+        if not name.strip() or not password.strip():
+            messagebox.showwarning("Ошибка", "Имя и пароль не могут быть пустыми!")
+            return
+
+        if password != confirm_password:
+            messagebox.showwarning("Ошибка", "Пароли не совпадают!")
+            return
+
+        hashed_password = hash_password(password) #хеширование пароля
+        name_password = hash_password(name) #хеширование имени пользователя
+
+        if self.save_user(name_password, hashed_password):
+            messagebox.showinfo("Регистрация", f"Пользователь {name} успешно зарегистрирован!")
+            self.register_window.destroy()
+        else:
+            messagebox.showwarning("Ошибка", "Имя пользователя уже занято!")
+
+    def save_user(self, name_password, hashed_password):
+        """Сохраняет логин и пароль в файл, если логин уникален"""
+        if os.path.exists(DATA_FILE):
+            with open(DATA_FILE, "r") as file:
+                for line in file:
+                    stored_username, _ = line.strip().split(":")
+                    if stored_username == name_password:
+                        return False
+
+        with open(DATA_FILE, "a") as file:
+            file.write(f"{name_password}:{hashed_password}\n")
+        return True
+
+def start_game():
+    """Создает новое игровое приложение и центрирует его окно на экране."""
+    app = CircleGridApp(root)
+    root.eval('tk::PlaceWindow . center')
+
+root = tk.Tk()
+root.withdraw()
+LoginWindow(root, start_game)
+root.mainloop()
